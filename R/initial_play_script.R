@@ -8,6 +8,7 @@ library(readr)
 library(sf)
 library(tmap)
 library(concaveman)
+library(mobr)
 
 # read data in
 dat <- read_csv("Data/UMBC_Swan_20211029_w_City.csv")
@@ -51,10 +52,10 @@ dat %>%
   summarize(N=length(unique(site_id)))
 
 # let's see how different the cities are in size
-city_size_function <- function(city){
+city_size_function <- function(city_name){
   
   area <- dat_sf %>%
-    dplyr::filter(evalid == city) %>%
+    dplyr::filter(evalid == city_name) %>%
     concaveman(., concavity=1) %>%
     st_area() %>%
     as.numeric()
@@ -90,13 +91,17 @@ unique(analysis_dat$evalid)
 # this is used for the resampling
 # Forest is always < OTHER
 # so we can pick a number of sites to randomly sample
-resampling_beta_method <- function(city_name){
+resampling_beta_method <- function(city_name, number_of_points){
+  
+  message(paste0("City identifier: ", city_name))
   
   dat_tmp <- analysis_dat %>%
     dplyr::filter(evalid==city_name)
   
   # sample a number of points from each forest and "other"
-  sample_function <- function(number_of_points){
+  aggregate_samples_function <- function(number_of_points, draw_number){
+    
+    message(paste0("Compiling draw number ", draw_number))
     
     # sample sites
     site_sample <- dat_tmp %>%
@@ -132,7 +137,30 @@ resampling_beta_method <- function(city_name){
       concaveman(., concavity=1) %>%
       st_area() %>%
       as.numeric()
+    
+    centroid_forest <- sample_coords %>%
+      dplyr::filter(treatment=="Forest") %>%
+      st_as_sf(coords=c("lon", "lat"), crs=4326) %>%
+      concaveman(., concavity=1) %>%
+      st_centroid() %>%
+      st_coordinates() %>%
+      data.frame()
+    
+    centroid_other <- sample_coords %>%
+      dplyr::filter(treatment=="Other") %>%
+      st_as_sf(coords=c("lon", "lat"), crs=4326) %>%
+      concaveman(., concavity=1) %>%
+      st_centroid() %>%
+      st_coordinates() %>%
+      data.frame()
       
+    # get the area and coords of the forest and 'other' treatments
+    # into a single dataframe to read in below
+    attributes_df <- data.frame(treatment=c("Forest", "Other"),
+                                area_m2=c(area_forest, area_other),
+                                centroid_lat=c(centroid_forest$Y, centroid_other$Y),
+                                centroid_lon=c(centroid_forest$X, centroid_other$X))
+    
     # then get the data from those randomly sampled sites
     # and turn it into a matrix for mobr format
     dat_sample <- dat_tmp %>%
@@ -140,16 +168,80 @@ resampling_beta_method <- function(city_name){
       group_by(treatment, scientific_name) %>%
       summarize(abund=sum(count_tree)) %>%
       ungroup() %>%
-      pivot_wider(names_from=scientific_name,
-                  values_from=abund,
-                  values_fill=0)
+      mutate(sample_number=draw_number) %>%
+      mutate(number_of_points=number_of_points) %>%
+      left_join(., attributes_df) %>%
+      mutate(equal_number_of_points=nrow(site_sample)==length(unique(site_sample$site_id)))
+    
+    return(dat_sample)
     
   }
   
+  # now apply the above function 100 times
+  # for now just for '5' sites aggregated at a time
+  sampled_community_aggregated <- bind_rows(lapply(c(1:50), function(x){aggregate_samples_function(number_of_points, x)}))
   
+  sampled_community_aggregated <- sampled_community_aggregated %>%
+    ungroup() %>%
+    left_join(., sampled_community_aggregated %>%
+                dplyr::select(treatment, sample_number) %>%
+                distinct() %>%
+                mutate(agg_site_id=1:nrow(.)), by=c("treatment", "sample_number"))
+  
+  # now get sampled_community_aggregated ready for analysis in mob
+  # get the community matrix
+  env <- sampled_community_aggregated %>%
+    dplyr::select(agg_site_id, centroid_lat, centroid_lon, treatment, area_m2) %>%
+    distinct()
+  
+  comm <- sampled_community_aggregated %>%
+    dplyr::select(agg_site_id, scientific_name, abund) %>%
+    pivot_wider(names_from=scientific_name,
+              values_from=abund,
+              values_fill=0)
+  
+  row.names(comm) <- comm$agg_site_id
+  comm <- comm[ , -1]
+  comm[1:5, 1:5]
+    
+  tree_mob <- make_mob_in(comm, env, coord_names = c('centroid_lon', 'centroid_lat'),
+                          latlong = TRUE)
+  tree_mob
+  
+  ## multi-metric MoB analysis 
+  stats <- get_mob_stats(tree_mob, group_var = 'treatment', n_perm = 1)
+  
+  final_summary_df <- stats$samples_stats %>%
+    mutate(level="sample") %>%
+    bind_rows(stats$groups_stats %>%
+                mutate(level="groups")) %>%
+    mutate(number_of_sites_aggregated=number_of_points) %>%
+    mutate(city=city_name)
+  
+  return(final_summary_df)
+    
   
 }
 
+number_points_5 <- bind_rows(lapply(unique(analysis_dat$evalid), function(x){resampling_beta_method(x, 5)}))
+
+
+# first attempt at a plot
+number_points_5 %>%
+  dplyr::filter(level=="sample") %>%
+  dplyr::filter(index %in% c("beta_S", "beta_S_n", "beta_S_PIE")) %>%
+  ggplot(., aes(x=group, y=value, fill=group))+
+  geom_violin(width=0.8)+
+  geom_boxplot(width=0.1, color="grey", alpha=0.2)+
+  coord_flip()+
+  facet_wrap(index~city, scales="free")+
+  scale_fill_brewer(palette="Dark2")+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  ylab("Beta diversity")+
+  xlab("")
+
+ggsave("temp_fig.png", width=8.5, height=6.6, units="in")
 
 
 
@@ -162,5 +254,5 @@ b <- dat %>%
   unite(site_coords, lat, lon, remove=FALSE, sep="_") %>%
   dplyr::filter(site_coords=="30.235153_-97.896629")
 
-
+# 2) What does count_tree==0 mean? Only when saplings are recorded?
 
