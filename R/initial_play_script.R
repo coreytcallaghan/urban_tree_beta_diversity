@@ -229,7 +229,7 @@ number_points_5 <- bind_rows(lapply(unique(analysis_dat$evalid), function(x){res
 # first attempt at a plot
 number_points_5 %>%
   dplyr::filter(level=="sample") %>%
-  dplyr::filter(index %in% c("beta_S", "beta_S_n", "beta_S_PIE")) %>%
+  dplyr::filter(index %in% c("N", "beta_S", "beta_S_n", "beta_S_PIE")) %>%
   ggplot(., aes(x=group, y=value, fill=group))+
   geom_violin(width=0.8)+
   geom_boxplot(width=0.1, color="grey", alpha=0.2)+
@@ -243,7 +243,19 @@ number_points_5 %>%
 
 ggsave("temp_fig.png", width=8.5, height=6.6, units="in")
 
-
+number_points_5 %>%
+  dplyr::filter(level=="sample") %>%
+  dplyr::filter(index=="N") %>%
+  ggplot(., aes(x=group, y=value, fill=group))+
+  geom_violin(width=0.8)+
+  geom_boxplot(width=0.1, color="grey", alpha=0.2)+
+  coord_flip()+
+  facet_wrap(index~city, scales="free")+
+  scale_fill_brewer(palette="Dark2")+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  ylab("Beta diversity")+
+  xlab("")
 
 
 # QUESTIONS
@@ -256,3 +268,4 @@ b <- dat %>%
 
 # 2) What does count_tree==0 mean? Only when saplings are recorded?
 
+# 3) are all the fia plots the same size?
