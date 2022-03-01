@@ -61,7 +61,7 @@ city_size_function <- function(city_name){
     as.numeric()
   
   out <- data.frame(`area_us_survey_foot^2`=area,
-                    city=city)
+                    city=city_name)
   
   return(out)
   
@@ -80,7 +80,10 @@ analysis_dat <- dat %>%
               mutate(site_id=1:nrow(.)), by="site_coords") %>%
   mutate(site_id=as.character(site_id)) %>%
   mutate(treatment=ifelse(fia_lu_abbr=="Forest", fia_lu_abbr, "Other")) %>%
-  dplyr::filter(!evalid %in% c("SanDiego2017Curr", "WashingtonDC2018Curr"))
+  dplyr::filter(!evalid %in% c("SanDiego2017Curr", "WashingtonDC2018Curr")) %>%
+  group_by(site_coords) %>%
+  mutate(number_landuse=length(unique(fia_lu_abbr))) %>%
+  dplyr::filter(number_landuse==1)
 
 unique(analysis_dat$evalid)
 
@@ -122,21 +125,24 @@ resampling_beta_method <- function(city_name, number_of_points){
       st_as_sf(coords=c("lon", "lat"), crs=4326) %>%
       concaveman(., concavity=1) %>%
       st_area() %>%
-      as.numeric()
+      as.numeric() %>%
+      unique()
     
     area_forest <- sample_coords %>%
       dplyr::filter(treatment=="Forest") %>%
       st_as_sf(coords=c("lon", "lat"), crs=4326) %>%
       concaveman(., concavity=1) %>%
       st_area() %>%
-      as.numeric()
+      as.numeric() %>%
+      unique()
     
     area_other <- sample_coords %>%
       dplyr::filter(treatment=="Other") %>%
       st_as_sf(coords=c("lon", "lat"), crs=4326) %>%
       concaveman(., concavity=1) %>%
       st_area() %>%
-      as.numeric()
+      as.numeric() %>%
+      unique()
     
     centroid_forest <- sample_coords %>%
       dplyr::filter(treatment=="Forest") %>%
@@ -144,7 +150,8 @@ resampling_beta_method <- function(city_name, number_of_points){
       concaveman(., concavity=1) %>%
       st_centroid() %>%
       st_coordinates() %>%
-      data.frame()
+      data.frame() %>%
+      distinct()
     
     centroid_other <- sample_coords %>%
       dplyr::filter(treatment=="Other") %>%
@@ -152,7 +159,8 @@ resampling_beta_method <- function(city_name, number_of_points){
       concaveman(., concavity=1) %>%
       st_centroid() %>%
       st_coordinates() %>%
-      data.frame()
+      data.frame() %>%
+      distinct()
       
     # get the area and coords of the forest and 'other' treatments
     # into a single dataframe to read in below
@@ -179,7 +187,7 @@ resampling_beta_method <- function(city_name, number_of_points){
   
   # now apply the above function 100 times
   # for now just for '5' sites aggregated at a time
-  sampled_community_aggregated <- bind_rows(lapply(c(1:50), function(x){aggregate_samples_function(number_of_points, x)}))
+  sampled_community_aggregated <- bind_rows(lapply(c(1:1000), function(x){aggregate_samples_function(number_of_points, x)}))
   
   sampled_community_aggregated <- sampled_community_aggregated %>%
     ungroup() %>%
@@ -224,7 +232,13 @@ resampling_beta_method <- function(city_name, number_of_points){
 }
 
 number_points_5 <- bind_rows(lapply(unique(analysis_dat$evalid), function(x){resampling_beta_method(x, 5)}))
+saveRDS(number_points_5, "intermediate_results/number_points_5_analysis.RDS")
 
+number_points_10 <- bind_rows(lapply(unique(analysis_dat$evalid), function(x){resampling_beta_method(x, 10)}))
+saveRDS(number_points_10, "intermediate_results/number_points_10_analysis.RDS")
+
+number_points_15 <- bind_rows(lapply(unique(analysis_dat$evalid), function(x){resampling_beta_method(x, 15)}))
+saveRDS(number_points_15, "intermediate_results/number_points_15_analysis.RDS")
 
 # first attempt at a plot
 number_points_5 %>%
