@@ -10,6 +10,9 @@ library(tmap)
 library(concaveman)
 library(mobr)
 
+#turn off the s2 processing via 
+sf::sf_use_s2(FALSE)
+
 # read data in
 dat <- read_csv("Data/UMBC_Swan_20211029_w_City.csv")
 
@@ -239,6 +242,9 @@ saveRDS(number_points_10, "intermediate_results/number_points_10_analysis.RDS")
 
 number_points_15 <- bind_rows(lapply(unique(analysis_dat$evalid), function(x){resampling_beta_method(x, 15)}))
 saveRDS(number_points_15, "intermediate_results/number_points_15_analysis.RDS")
+
+number_points_20 <- bind_rows(lapply(unique(analysis_dat$evalid), function(x){resampling_beta_method(x, 20)}))
+saveRDS(number_points_20, "intermediate_results/number_points_20_analysis.RDS")
 
 # first attempt at a plot
 number_points_5 %>%
