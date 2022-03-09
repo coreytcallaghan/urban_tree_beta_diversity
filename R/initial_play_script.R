@@ -7,8 +7,13 @@ library(tidyr)
 library(readr)
 library(sf)
 library(tmap)
+library(tmaptools)
 library(concaveman)
 library(mobr)
+library(lmerTest)
+library(lme4)
+library(tidyr)
+library(tibble)
 
 #turn off the s2 processing via 
 sf::sf_use_s2(FALSE)
@@ -89,6 +94,84 @@ analysis_dat <- dat %>%
   dplyr::filter(number_landuse==1)
 
 unique(analysis_dat$evalid)
+
+
+# summarize the data a little bit
+analysis_dat %>%
+  group_by(evalid) %>%
+  summarize(number_sites=length(unique(site_id)),
+            number_species=length(unique(scientific_name)))
+
+analysis_dat %>%
+  group_by(evalid, treatment) %>%
+  summarize(number_sites=length(unique(site_id)),
+            number_species=length(unique(scientific_name)))
+
+# make a map of the study sites?
+analysis_dat_sf <- analysis_dat %>%
+  dplyr::select(evalid, site_id, treatment, lon, lat) %>%
+  distinct() %>%
+  st_as_sf(coords=c("lon", "lat"), crs=4326)
+
+tm_shape(analysis_dat_sf)+
+  tm_dots(size=1, col="treatment")+
+  tm_facets(by="evalid")
+
+port <- analysis_dat_sf %>%
+  dplyr::filter(evalid=="PortlandOR2018Curr")
+
+port_osm <- read_osm(port, ext=1.1)
+
+portland_map <- tm_shape(port_osm)+
+  tm_rgb()+
+  tm_shape(port)+
+  tm_dots(size=0.5, col="treatment", palette=c(Other='cyan', Forest='green'),
+          legend.show=FALSE)
+
+portland_map
+
+austin <- analysis_dat_sf %>%
+  dplyr::filter(evalid=="Austin2017Curr")
+
+austin_osm <- read_osm(austin, ext=1.1)
+
+austin_map <- tm_shape(austin_osm)+
+  tm_rgb()+
+  tm_shape(austin)+
+  tm_dots(size=0.5, col="treatment", palette=c(Other='cyan', Forest='green'),
+          legend.show=FALSE)
+
+austin_map
+
+houston <- analysis_dat_sf %>%
+  dplyr::filter(evalid=="Houston2017Curr")
+
+houston_osm <- read_osm(houston, ext=1.1)
+
+houston_map <- tm_shape(houston_osm)+
+  tm_rgb()+
+  tm_shape(houston)+
+  tm_dots(size=0.5, col="treatment", palette=c(Other='cyan', Forest='green'),
+          legend.show=FALSE)
+
+houston_map
+
+sanan <- analysis_dat_sf %>%
+  dplyr::filter(evalid=="SanAntonio2018Curr")
+
+sanan_osm <- read_osm(sanan, ext=1.1)
+
+sanan_map <- tm_shape(sanan_osm)+
+  tm_rgb()+
+  tm_shape(sanan)+
+  tm_dots(size=0.5, col="treatment", palette=c(Other='cyan', Forest='green'),
+          legend.show=FALSE)
+
+sanan_map
+
+map_all <- tmap_arrange(sanan_map, houston_map, austin_map, portland_map, ncol=2, nrow=2)
+
+tmap_save(map_all, "Figures/map_of_cities.png", width=7.5, height=6.9, units="in")
 
 # a potential method to get species x site matrix and calculate mob stuff
 # A resampling approach
@@ -246,6 +329,12 @@ saveRDS(number_points_15, "intermediate_results/number_points_15_analysis.RDS")
 number_points_20 <- bind_rows(lapply(unique(analysis_dat$evalid), function(x){resampling_beta_method(x, 20)}))
 saveRDS(number_points_20, "intermediate_results/number_points_20_analysis.RDS")
 
+
+number_points_5 <- readRDS("intermediate_results/number_points_5_analysis.RDS")
+number_points_10 <- readRDS("intermediate_results/number_points_10_analysis.RDS")
+number_points_15 <- readRDS("intermediate_results/number_points_15_analysis.RDS")
+number_points_20 <- readRDS("intermediate_results/number_points_20_analysis.RDS")
+
 # first attempt at a plot
 number_points_5 %>%
   dplyr::filter(level=="sample") %>%
@@ -261,8 +350,9 @@ number_points_5 %>%
   ylab("Beta diversity")+
   xlab("")
 
-ggsave("temp_fig.png", width=8.5, height=6.6, units="in")
+ggsave("Figures/all_results.png", width=8.5, height=6.6, units="in")
 
+# a figure just for N
 number_points_5 %>%
   dplyr::filter(level=="sample") %>%
   dplyr::filter(index=="N") %>%
@@ -276,6 +366,69 @@ number_points_5 %>%
   theme(axis.text=element_text(color="black"))+
   ylab("Beta diversity")+
   xlab("")
+
+# run a model
+# separately for each index
+beta_s_n <- number_points_5 %>%
+  dplyr::filter(index=="beta_S_n")
+
+mod_beta_s_n <- lmer(value ~ group + (1|city), data=beta_s_n)
+summary(mod_beta_s_n)
+confint(mod_beta_s_n)
+
+beta_s <- number_points_5 %>%
+  dplyr::filter(index=="beta_S")
+
+mod_beta_s <- lmer(value ~ group + (1|city), data=beta_s)
+summary(mod_beta_s)
+confint(mod_beta_s)
+
+beta_s_pie <- number_points_5 %>%
+  dplyr::filter(index=="beta_S_PIE")
+
+mod_beta_s_pie <- lmer(value ~ group + (1|city), data=beta_s_pie)
+summary(mod_beta_s_pie)
+confint(mod_beta_s_pie)
+
+# make a figure of the model results
+summary(mod_beta_s_n)$coefficients %>%
+  as.data.frame() %>%
+  rownames_to_column(var="term") %>%
+  mutate(lwr_95=confint(mod_beta_s_n)[4]) %>%
+  mutate(upr_95=confint(mod_beta_s_n)[4, 2]) %>%
+  mutate(model="Beta_S_n") %>%
+  bind_rows(summary(mod_beta_s)$coefficients %>%
+              as.data.frame() %>%
+              rownames_to_column(var="term") %>%
+              mutate(lwr_95=confint(mod_beta_s)[4]) %>%
+              mutate(upr_95=confint(mod_beta_s)[4, 2]) %>%
+              mutate(model="Beta_S")) %>%
+  bind_rows(summary(mod_beta_s_pie)$coefficients %>%
+              as.data.frame() %>%
+              rownames_to_column(var="term") %>%
+              mutate(lwr_95=confint(mod_beta_s_pie)[4]) %>%
+              mutate(upr_95=confint(mod_beta_s_pie)[4, 2]) %>%
+              mutate(model="Beta_S_PIE")) %>%
+  dplyr::filter(term=="groupOther") %>%
+  mutate(term2="Other") %>%
+  ggplot(., aes(x=model, y=Estimate))+
+  geom_point()+
+  geom_errorbar(aes(ymin=lwr_95, ymax=upr_95), width=0.5)+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  coord_flip()+
+  xlab("")+
+  ylab("The beta diversity difference between other and forest")+
+  geom_hline(yintercept=0, color="red", linetype="dashed")
+
+ggsave("Figures/model_results.png", width=5.6, height=4.8, units="in")
+
+
+
+
+
+
+
 
 
 # QUESTIONS
