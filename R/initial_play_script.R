@@ -260,7 +260,9 @@ resampling_beta_method <- function(city_name, number_of_points){
     dat_sample <- dat_tmp %>%
       dplyr::filter(site_id %in% local(site_sample$site_id)) %>%
       group_by(treatment, scientific_name) %>%
-      summarize(abund=sum(count_tree)) %>%
+      summarize(abund=sum(count_tree),
+                biomass=sum(biomass_tree),
+                carbon=sum(carbon_tree)) %>%
       ungroup() %>%
       mutate(sample_number=draw_number) %>%
       mutate(number_of_points=number_of_points) %>%
@@ -285,8 +287,12 @@ resampling_beta_method <- function(city_name, number_of_points){
   # now get sampled_community_aggregated ready for analysis in mob
   # get the community matrix
   env <- sampled_community_aggregated %>%
-    dplyr::select(agg_site_id, centroid_lat, centroid_lon, treatment, area_m2) %>%
-    distinct()
+    group_by(agg_site_id, treatment) %>%
+    summarize(biomass=sum(biomass),
+              carbon=sum(carbon)) %>%
+    left_join(., sampled_community_aggregated %>%
+                dplyr::select(agg_site_id, centroid_lat, centroid_lon, treatment, area_m2) %>%
+                distinct())
   
   comm <- sampled_community_aggregated %>%
     dplyr::select(agg_site_id, scientific_name, abund) %>%
@@ -306,15 +312,16 @@ resampling_beta_method <- function(city_name, number_of_points){
   stats <- get_mob_stats(tree_mob, group_var = 'treatment', n_perm = 1)
   
   final_summary_df <- stats$samples_stats %>%
-    mutate(level="sample") %>%
+    mutate(scale="alpha") %>%
     bind_rows(stats$groups_stats %>%
-                mutate(level="groups")) %>%
+                mutate(scale="gamma")) %>%
     mutate(number_of_sites_aggregated=number_of_points) %>%
-    mutate(city=city_name)
+    mutate(city=city_name) %>%
+    mutate(scale=ifelse(grepl("beta", index)==TRUE, "beta", scale)) %>%
+    bind_rows(tree_mob$env)
   
   return(final_summary_df)
     
-  
 }
 
 number_points_5 <- bind_rows(lapply(unique(analysis_dat$evalid), function(x){resampling_beta_method(x, 5)}))
@@ -338,12 +345,12 @@ number_points_20 <- readRDS("intermediate_results/number_points_20_analysis.RDS"
 # first attempt at a plot
 number_points_5 %>%
   dplyr::filter(level=="sample") %>%
-  dplyr::filter(index %in% c("N", "beta_S", "beta_S_n", "beta_S_PIE")) %>%
+  #dplyr::filter(index %in% c("N", "beta_S", "beta_S_n", "beta_S_PIE")) %>%
   ggplot(., aes(x=group, y=value, fill=group))+
   geom_violin(width=0.8)+
   geom_boxplot(width=0.1, color="grey", alpha=0.2)+
   coord_flip()+
-  facet_wrap(index~city, scales="free")+
+  facet_wrap(index~city, scales="free", ncol=4)+
   scale_fill_brewer(palette="Dark2")+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
