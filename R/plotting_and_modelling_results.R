@@ -120,6 +120,7 @@ length(unique(analysis_dat$site_coords))
 
 # make a summary figure of the total overall data
 analysis_dat %>%
+  mutate(treatment=gsub("Other", "Built", treatment)) %>%
   group_by(scientific_name, evalid, treatment) %>%
   summarize(N=n()) %>%
   mutate(N=1) %>%
@@ -138,6 +139,24 @@ analysis_dat %>%
   xlab("")+
   ylab("Species richness")+
   scale_fill_brewer(palette="Set1")
+
+# get unique species in forest land use
+# make a summary figure of the total overall data
+analysis_dat %>%
+  group_by(scientific_name, evalid, treatment) %>%
+  summarize(N = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = treatment, values_from = N, values_fill = list(N = 0)) %>%
+  mutate(Unique_Forest = ifelse(Forest > 0 & Other == 0, 1, 0),
+         Unique_Other = ifelse(Other > 0 & Forest == 0, 1, 0)) %>%
+  filter(Unique_Forest == 1 | Unique_Other == 1) %>%
+  group_by(evalid) %>%
+  summarize(Forest_Species = sum(Unique_Forest),
+            Other_Species = sum(Unique_Other), .groups = 'drop') %>%
+  pivot_longer(cols = c(Forest_Species, Other_Species), names_to = "treatment", values_to = "species_richness") %>%
+  left_join(., analysis_dat %>%
+              group_by(evalid) %>%
+              summarize(N=length(unique(scientific_name)))) %>%
+  mutate(percent_unique=(species_richness/N)*100)
 
 
 # make a map of the study sites?
@@ -244,6 +263,20 @@ number_points_5 %>%
   xlab("")
 
 ggsave("Figures/beta_diversity.png", width=8.5, height=6.6, units="in")
+
+number_points_5 %>%
+  dplyr::filter(scale=="gamma") %>%
+  #dplyr::filter(index %in% c("N", "beta_S", "beta_S_n", "beta_S_PIE")) %>%
+  ggplot(., aes(x=group, y=value, fill=group))+
+  geom_violin(width=0.8)+
+  geom_boxplot(width=0.1, color="grey", alpha=0.2)+
+  coord_flip()+
+  facet_wrap(index~city, scales="free", ncol=4)+
+  scale_fill_brewer(palette="Dark2")+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  ylab("Gamma diversity")+
+  xlab("")
 
 # run a model
 # separately for each index

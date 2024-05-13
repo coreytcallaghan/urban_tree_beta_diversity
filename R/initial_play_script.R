@@ -107,6 +107,17 @@ analysis_dat %>%
   summarize(number_sites=length(unique(site_id)),
             number_species=length(unique(scientific_name)))
 
+# number of individuals per site_id
+individuals_per_site <- analysis_dat %>%
+  group_by(evalid, site_id, treatment) %>%
+  summarize(number_individuals_sapling=sum(count_sapling),
+            number_individuals_tree=sum(count_tree)) %>%
+  mutate(total_individuals=number_individuals_sapling+number_individuals_tree)
+
+mean(individuals_per_site$total_individuals)
+median(individuals_per_site$total_individuals)
+sd(individuals_per_site$total_individuals)
+
 # make a map of the study sites?
 analysis_dat_sf <- analysis_dat %>%
   dplyr::select(evalid, site_id, treatment, lon, lat) %>%
@@ -313,12 +324,13 @@ resampling_beta_method <- function(city_name, number_of_points){
   
   final_summary_df <- stats$samples_stats %>%
     mutate(scale="alpha") %>%
+    mutate(agg_site_id=rep(env %>% arrange(treatment) %>% .$agg_site_id, 7)) %>%
     bind_rows(stats$groups_stats %>%
                 mutate(scale="gamma")) %>%
     mutate(number_of_sites_aggregated=number_of_points) %>%
     mutate(city=city_name) %>%
     mutate(scale=ifelse(grepl("beta", index)==TRUE, "beta", scale)) %>%
-    bind_rows(tree_mob$env)
+    left_join(., tree_mob$env)
   
   return(final_summary_df)
     
