@@ -120,6 +120,12 @@ length(unique(analysis_dat$site_coords))
 
 # make a summary figure of the total overall data
 analysis_dat %>%
+  mutate(evalid=case_when(
+    evalid=="Austin2017Curr" ~ "Austin",
+    evalid=="Houston2017Curr" ~ "Houston",
+    evalid=="PortlandOR2018Curr" ~ "Portland",
+    evalid=="SanAntonio2018Curr" ~ "San Antonio"
+    )) %>%
   mutate(treatment=gsub("Other", "Built", treatment)) %>%
   group_by(scientific_name, evalid, treatment) %>%
   summarize(N=n()) %>%
@@ -233,6 +239,13 @@ number_points_20 <- readRDS("intermediate_results/number_points_20_analysis.RDS"
 
 # first attempt at a plot
 number_points_5 %>%
+  mutate(city=case_when(
+    city=="Austin2017Curr" ~ "Austin",
+    city=="Houston2017Curr" ~ "Houston",
+    city=="PortlandOR2018Curr" ~ "Portland",
+    city=="SanAntonio2018Curr" ~ "San Antonio"
+  )) %>%
+  mutate(group=gsub("Other", "Built", group)) %>%
   dplyr::filter(scale=="alpha") %>%
   #dplyr::filter(index %in% c("N", "beta_S", "beta_S_n", "beta_S_PIE")) %>%
   ggplot(., aes(x=group, y=value, fill=group))+
@@ -250,6 +263,13 @@ ggsave("Figures/alpha_diversity.png", width=8.5, height=6.6, units="in")
 
 # a figure just for N
 number_points_5 %>%
+  mutate(city=case_when(
+    city=="Austin2017Curr" ~ "Austin",
+    city=="Houston2017Curr" ~ "Houston",
+    city=="PortlandOR2018Curr" ~ "Portland",
+    city=="SanAntonio2018Curr" ~ "San Antonio"
+  )) %>%
+  mutate(group=gsub("Other", "Built", group)) %>%
   dplyr::filter(scale=="beta") %>%
   ggplot(., aes(x=group, y=value, fill=group))+
   geom_violin(width=0.8)+
@@ -265,6 +285,13 @@ number_points_5 %>%
 ggsave("Figures/beta_diversity.png", width=8.5, height=6.6, units="in")
 
 number_points_5 %>%
+  mutate(city=case_when(
+    city=="Austin2017Curr" ~ "Austin",
+    city=="Houston2017Curr" ~ "Houston",
+    city=="PortlandOR2018Curr" ~ "Portland",
+    city=="SanAntonio2018Curr" ~ "San Antonio"
+  )) %>%
+  mutate(group=gsub("Other", "Built", group)) %>%
   dplyr::filter(scale=="gamma") %>%
   #dplyr::filter(index %in% c("N", "beta_S", "beta_S_n", "beta_S_PIE")) %>%
   ggplot(., aes(x=group, y=value, fill=group))+
@@ -337,12 +364,20 @@ ggsave("Figures/model_results.png", width=5.6, height=4.8, units="in")
 
 # differences between biomass and carbon for each of the cities
 number_points_5 %>%
+  dplyr::filter(scale=="alpha") %>%
   dplyr::select(8:12) %>%
   dplyr::filter(complete.cases(.)) %>%
-  mutate(city=c(rep("Austin", 2000), rep("Houston", 2000), rep("Portland", 2000), rep("San Antonio", 2000))) %>%
   dplyr::select(treatment, city, biomass, carbon) %>%
-  pivot_longer(!c("treatment", "city"), names_to="attribute", values_to="value") %>%
-  ggplot(., aes(x=treatment, y=value, fill=treatment))+
+  mutate(city=case_when(
+    city=="Austin2017Curr" ~ "Austin",
+    city=="Houston2017Curr" ~ "Houston",
+    city=="PortlandOR2018Curr" ~ "Portland",
+    city=="SanAntonio2018Curr" ~ "San Antonio"
+  )) %>%
+  mutate(treatment=gsub("Other", "Built", treatment)) %>%
+  rename(group=treatment) %>%
+  pivot_longer(!c("group", "city"), names_to="attribute", values_to="value") %>%
+  ggplot(., aes(x=group, y=value, fill=group))+
   geom_violin(width=0.8)+
   geom_boxplot(width=0.1, color="grey", alpha=0.2)+
   coord_flip()+
@@ -351,4 +386,8 @@ number_points_5 %>%
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
   ylab("Attribute")+
-  xlab("")
+  xlab("")+
+  theme(legend.position="bottom")+
+  theme(plot.margin = unit(c(1, 1, 1, 1), "cm"))
+
+ggsave("Figures/biomass_carbon_results.png", width=12, height=8, units="in")
